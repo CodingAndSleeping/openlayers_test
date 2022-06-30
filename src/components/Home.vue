@@ -6,20 +6,24 @@ import OSM from 'ol/source/OSM';
 import XYZ from 'ol/source/XYZ';
 import View from 'ol/View';
 import { Zoom, ZoomSlider, MousePosition, ScaleLine, OverviewMap, ZoomToExtent } from 'ol/control';
-import { createStringXY } from 'ol/coordinate';
+import { createStringXY, toStringXY } from 'ol/coordinate';
 import { onMounted, ref } from 'vue';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import Draw from 'ol/interaction/Draw';
 import { createRegularPolygon, createBox } from 'ol/interaction/Draw';
+import Feature from 'ol/Feature';
+import Point from 'ol/geom/Point';
+import Style from 'ol/style/Style';
+import Icon from 'ol/style/Icon';
+import Text from 'ol/style/Text';
+import Overlay from 'ol/Overlay';
 import LayerChange from './LayerChange.vue';
 import DrawFeature from './DrawFeature.vue';
-
 // 初始化一个空地图
 const map = ref(null);
 const OSMLayer = ref(null);
 const tianLayer = ref(null);
-const vectorLayer = ref(null);
 // 初始化地图函数
 function initMap() {
     // OSM图层
@@ -36,10 +40,10 @@ function initMap() {
         }),
         visible: false
     })
-    // 初始化一个空的矢量图层
-    vectorLayer.value = new VectorLayer({
-        name: "Vector"
-    })
+    // // 初始化一个空的矢量图层
+    // vectorLayer.value = new VectorLayer({
+    //     name: "Vector"
+    // })
     // 创建一个地图
     map.value = new Map({
         // 存放地图的容器
@@ -51,7 +55,7 @@ function initMap() {
             // 天地图图层
             tianLayer.value,
             // 矢量图层
-            vectorLayer.value
+            // vectorLayer.value
         ],
         // 设置视图
         view: new View({
@@ -107,17 +111,24 @@ function changeOpacity(val, currentLayer) {
 const draw = ref(null);
 // 创建一个空的矢量图层源
 const vectorSource = ref(null);
+const vectorLayer = ref(null);
 // 定义一个geometryFunction
 let geometryFunction;
 // 封装绘制图形函数
 function drawFea(map, draw, layer, type, source, geometryFunction, freehand) {
     // 判断source是否为空，若为空，创建一个VectorSource对象，并设置为矢量图层的源
+    if (!layer.value) {
+        layer.value = new VectorLayer({
+            name: "Vector"
+        })
+    }
     if (!source.value) {
         source.value = new VectorSource({
-            wrapX: false
+            wrapX: false,
         })
-        layer.value.setSource(source.value);
+        map.value.addLayer(layer.value);
     }
+    layer.value.setSource(source.value);
     // 创建绘图工具
     draw.value = new Draw({
         type, // 绘制图形类型
@@ -139,7 +150,10 @@ function drawInteraction(val) {
             break;
         case "Clear": // 清空绘制
             vectorSource.value = null; // 矢量图层源置空
-            vectorLayer.value.setSource(vectorSource.value); // 设置空的矢量图层源
+            if (vectorLayer.value) {
+                vectorLayer.value.setSource(vectorSource.value); // 设置空的矢量图层源
+            }
+            map.value.removeLayer(vectorLayer.value);
             break;
         case "Curve": // 绘制曲线
             drawFea(map, draw, vectorLayer, "LineString", vectorSource, undefined, true);
@@ -164,11 +178,98 @@ function drawInteraction(val) {
 }
 
 // 添加标注
+let event
+const labelSource = ref(null);
+const labelLayer = ref(null);
+function setFeatureSytle(feature) {
+    return new Style({
+        text: new Text({
+            text: feature.get("name"),
+            offsetY: 10
+        }),
+        image: new Icon({
+            src: "src/assets/position.png",
+            anchor: [0.5, 0.85],
+            scale: 0.2
+        }),
+    })
+}
 
+function addLabel() {
+    map.value.un(propEvent.type, propEvent.listener)
+    if (!labelLayer.value) {
+        labelLayer.value = new VectorLayer({
+            name: "Label"
+        })
+    }
+    if (!labelSource.value) {
+        labelSource.value = new VectorSource({
+            wrapX: false,
+        })
+        map.value.addLayer(labelLayer.value);
+    }
+    labelLayer.value.setSource(labelSource.value);
+    event = map.value.on("click", (e) => {
+        const coordinate = toStringXY(e.coordinate, 3);
+        const feature = new Feature({
+            name: "标注",
+            coordinate,
+            geometry: new Point(e.coordinate)
+        })
+        feature.setStyle(setFeatureSytle(feature));
+        labelSource.value.addFeature(feature);
+    })
 
+}
+function cancelAddLabel() {
+    if (event) {
+        map.value.un(event.type, event.listener);
+    }
+    if (propEvent) {
+        map.value.on(propEvent.type, propEvent.listener);
+    }
+}
+
+function clearLabel() {
+    if (event) {
+        map.value.un(event.type, event.listener);
+    }
+    labelSource.value = null;
+    if (labelLayer.value) {
+        labelLayer.value.setSource(labelSource.value);
+    }
+    map.value.removeLayer(labelLayer.value);
+}
+
+  
+
+const coordinate = ref("");
+let propEvent;
+const popupElement = ref(null);
+const popup = ref(null);
 // 组件挂载时初始化地图
 onMounted(() => {
     initMap();
+    propEvent = map.value.on("click", (e) => {
+        popup.value = new Overlay({
+            element: popupElement.value
+        })
+        const feature = map.value.forEachFeatureAtPixel(e.pixel, (feature) => {
+            return feature;
+        }, {
+            layerFilter(layer) {
+                return layer.get("name") == "Label"
+            }
+        });
+        if (feature) {
+            coordinate.value = feature.get("coordinate")
+            popup.value.setPosition(e.coordinate);
+            map.value.addOverlay(popup.value);
+        } else {
+            coordinate.value = "";
+            map.value.removeOverlay(popup);
+        }
+    })
 })
 
 </script>
@@ -180,6 +281,13 @@ onMounted(() => {
         <div id="mapPoint"></div>
         <layer-change @changeLayer="changeLayer" @changeOpacity="changeOpacity"></layer-change>
         <draw-feature @drawInteraction="drawInteraction"></draw-feature>
+        <div class="addLabel">
+            <span class="title">添加标记</span>
+            <div @click="addLabel">点击添加</div>
+            <div @click="cancelAddLabel">取消添加</div>
+            <div @click="clearLabel">清除标记</div>
+        </div>
+        <div class="popup" ref="popupElement">{{ coordinate }}</div>
     </div>
 </template>
 
@@ -198,6 +306,39 @@ onMounted(() => {
         left: 200px;
         bottom: 1px;
         z-index: 1000;
+    }
+
+    .addLabel {
+        color: #000000;
+        width: 113px;
+        padding: 10px;
+        background-color: #7C9ABE;
+        outline: 5px solid rgba(255, 255, 255, 0.5);
+        border-radius: 10px;
+        position: fixed;
+        right: 10px;
+        top: 240px;
+        z-index: 100;
+
+
+        .title {
+            display: block;
+            color: #f0f0f0;
+            text-align: center;
+        }
+
+        div {
+            text-align: center;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            margin: 5px 0;
+            cursor: pointer;
+        }
+    }
+
+    .popup {
+        // border: 1px solid black;
+        background-color: wheat;
     }
 }
 

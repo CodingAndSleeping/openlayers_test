@@ -52,12 +52,10 @@ function clearFeature() {
     outline: 5px solid rgba(255, 255, 255, 0.5);
     border-radius: 10px;
     z-index: 100;
-
     .title {
         color: #f0f0f0;
         text-align: center;
     }
-
     .select {
         display: block;
         margin: 5px auto;
