@@ -20,6 +20,8 @@ import Text from 'ol/style/Text';
 import Overlay from 'ol/Overlay';
 import LayerChange from './LayerChange.vue';
 import DrawFeature from './DrawFeature.vue';
+
+
 // 初始化一个空地图
 const map = ref(null);
 const OSMLayer = ref(null);
@@ -106,6 +108,7 @@ function changeOpacity(val, currentLayer) {
     });
 }
 
+
 // 绘制图形
 // 创建一个空的Draw
 const draw = ref(null);
@@ -176,6 +179,10 @@ function drawInteraction(val) {
             drawFea(map, draw, vectorLayer, val, vectorSource, undefined, false);
     }
 }
+
+
+
+
 
 // 添加标注
 let event
